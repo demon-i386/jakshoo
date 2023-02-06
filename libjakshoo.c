@@ -40,7 +40,7 @@ int getaddrinfo(const char *node, const char *service, const struct addrinfo *hi
 
 struct passwd *getpwnam(const char *name){
 	if(original_getpwnam == NULL){
-		original_getpwnam = (struct passwd(*)(const char*))dlsym(RTLD_NEXT, "getpwnam");
+		original_getpwnam = (struct passwd *(*)(const char*))dlsym(RTLD_NEXT, "getpwnam");
 	}
 	printf("getpwnam :: \"%s\"\n", name);
 	void *ret = NULL;

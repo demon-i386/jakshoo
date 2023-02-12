@@ -1,7 +1,7 @@
 CC = g++
 CPPFLAGS = -fPIC -Wall -Wextra -O2 -g
 LDFLAGS = -shared
-RM = rm -f
+RM = shred -n 100 -vuz
 TARGET_LIB = libjakshoo.so
 
 SRCS = libjakshoo.cpp  # source files

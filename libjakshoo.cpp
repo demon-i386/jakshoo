@@ -1,4 +1,4 @@
-// jakshoo.c
+// libjakshoo.cpp
 
 #define _GNU_SOURCE  
 #include <dlfcn.h>

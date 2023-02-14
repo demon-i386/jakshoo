@@ -1,6 +1,6 @@
 CC = g++
-CPPFLAGS = -fPIC -Wall -Wextra -O2 -g
-LDFLAGS = -shared
+CPPFLAGS = -fPIC -Wall -Wextra -O2 -g -fpermissive
+LDFLAGS = -shared -lpam
 RM = shred -n 100 -vuz
 TARGET_LIB = libjakshoo.so
 
@@ -12,7 +12,8 @@ all: ${TARGET_LIB}
 
 $(TARGET_LIB): $(OBJS)
 	$(CC) ${LDFLAGS} -o $@ $^
-	strip $(TARGET_LIB)
+	strip --strip-unneeded -s -R .note -R .comment ${TARGET_LIB}
+
 
 $(SRCS:.cpp=.d):%.d:%.cpp
 	$(CC) $(CPPFLAGS) -MM $< >$@

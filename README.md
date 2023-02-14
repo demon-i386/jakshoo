@@ -13,6 +13,9 @@ LD_PRELOAD rootkit
 
 ## Usage
 ### File content tampering
+Current state: Done with stack based binaries, issues with data stored on heap
+
+
 Hide file contents by using tags.
 
 Real file:

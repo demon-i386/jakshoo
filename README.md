@@ -13,8 +13,9 @@ LD_PRELOAD rootkit
 
 ## Usage
 ### File content tampering
-Current state: Done with stack based binaries, issues with data stored on heap
-
+### Current state: 
+- Done with stack based binaries, issues with data stored on heap
+- To-do: hook implementations for `libstdc++.so.6`
 
 Hide file contents by using tags.
 

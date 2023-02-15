@@ -10,6 +10,7 @@ LD_PRELOAD rootkit
 - [ ] Network hiding
 - [ ] Process hiding
 - [ ] backdoor (blind / reverse)
+- [ ] clipper malware
 
 ## Usage
 ### File content tampering

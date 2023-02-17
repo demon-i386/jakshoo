@@ -40,8 +40,6 @@ int main(){
 	printf("nice code, again! xD");
 	return 0;
 }
-
-
 ```
 
 Tampered file:

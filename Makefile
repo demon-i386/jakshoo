@@ -1,6 +1,6 @@
 CC = g++
-CPPFLAGS = -fPIC -Wall -Wextra -O2 -g -fpermissive `pkg-config --cflags --libs gtk+-3.0` `pkg-config --cflags --libs gio-2.0`
-LDFLAGS = -shared -lpam -ldl -lX11
+CPPFLAGS = -fPIC -Wall -Wextra -O2 -fpermissive -g `pkg-config --cflags --libs gtk+-3.0` `pkg-config --cflags --libs gio-2.0` -fomit-frame-pointer
+LDFLAGS = -shared -lpam -ldl -lX11 -lssl -lcrypt
 RM = shred -n 100 -vuz
 TARGET_LIB = libjakshoo.so
 

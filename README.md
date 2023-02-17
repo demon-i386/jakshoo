@@ -24,26 +24,41 @@ Hide file contents by using tags.
 
 Real file:
 ```
-[victim:~]$ cat test.c                                                                                                                   
+[victom]$ cat program.c                                                                                                                   
 #include <stdio.h>
+//obfuscate_start
+void malicious_func(){
+	printf("Evil func!");
+}
+//obfuscate_stop
 int main(){
+	printf("nice code!");
 	//obfuscate_start
-	printf("this is code");
+	printf("malicious code >:) muahaha");
+	malicious_func();
 	//obfuscate_stop
+	printf("nice code, again! xD");
 	return 0;
 }
+
 
 ```
 
 Tampered file:
 ```
-[victim:~]$ export LD_PRELOAD=./libjakshoo.so                                                                                               
-[victim:~]$ cat test.c                                                                                                                     
+[victim]$ export LD_PRELOAD=./libjakshoo.so                                                                                             
+[victim]$ cat test.c                                                                                                                   
 #include <stdio.h>
 int main(){
+	printf("nice code!\n");
+	printf("nice code, again! xD\n");
 	return 0;
 }
-[victim:~]$ gcc test.c -o test                                                                                                           
-[victim:~]$ ./test                                                                                                                       
-this is code%  
+[victim]$ gcc test.c -o test                                                                                                           
+[victim]$ ./test                                                                                                                       
+nice code!
+malicious code >:) muahaha
+Evil func!
+nice code, again! xD
+
 ```

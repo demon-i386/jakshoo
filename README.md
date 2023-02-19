@@ -60,3 +60,6 @@ Evil func!
 nice code, again! xD
 
 ```
+
+## Disclaimer
+Use of this project is for Educational / Testing purposes only. Using it on unauthorised machines is strictly forbidden. If somebody is found to use it for illegal / malicious intent, author of the repo will not be held responsible.
